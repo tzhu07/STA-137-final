@@ -1,0 +1,126 @@
+---
+title: "Analyzing Trends in Travel Interest to Cancun: A Time-Series Approach Utilizing Google Trend Data"
+author: "Tracy Zhu, Yucheng Zhao"
+date: '2023-06-07'
+output: html_document
+---
+## Abstract
+This research aims to forecast the volume of tourists travelling to Cancun, Mexico, utilizing an Autoregressive Moving Average (ARMA) model. By analyzing Google Trends data from 2006 to 2019, this study seeks to develop a model that can predict fluctuations in tourism, particularly in response to events such as the COVID-19 pandemic. Initial observations indicated a clear upward trend in the data, with obvious seasonality. After log-transformation to ensure stable variance, the data was examined for trend and seasonal components. The resultant ARMA (1,1) model demonstrated a significant fit, suggesting that it can effectively predict tourist volume. This study contributes valuable insights into tourist behavior and the predictive power of search engine data, with implications for tourism industry stakeholders in Cancun.
+
+## Introduction
+Cancun, Mexico, has been a prominent tourist destination for many years. The influx of tourists has significant economic impacts on the region, and understanding trends in this visitation is of great importance to a variety of stakeholders. 
+<br>
+This research aims to construct such a model by employing an ARMA (1,1) approach. We leverage Google Trends data to gauge the popularity of Cancun as a travel destination. Google Trends provides an unparalleled opportunity to examine the internet search behavior of millions of users, which has increasingly been used as a proxy for various societal and economic trends. In this case, we will use it to track the volume of tourists intending to visit Cancun.
+<br>
+By tracking the keyword "flight to Cancun" from January 2006 to December 2019, we have identified patterns in the data. Given the global effects of the COVID-19 pandemic on tourism, the data after 2019 was treated as outliers and removed from the sample. The aim is to capture a "normal" operating environment for Cancun tourism. The data has been log-transformed to manage variance, and carefully scrutinized to identify any trend or seasonal components.
+<br>
+This study will present the ARMA (1,1) model developed from this data and discuss its potential applications and limitations. Through this research, we aim to offer a predictive tool that can be used to better understand the trends in the tourism industry of Cancun, Mexico, and potentially assist stakeholders in planning and decision-making processes.
+
+```{r include = FALSE}
+library(zoo)
+library(forecast)
+library(quadprog)
+library(quantmod)
+require(forecast)
+```
+
+```{r echo = FALSE}
+flight <- read.csv("E:/Tracy/spring 2023/STA 137/flight to cancun.csv")
+flight=ts(flight,start=2006,frequency = 12)
+n = length(flight)
+t = 1:n
+```
+
+```{r echo = FALSE}
+# Check for missing values
+missing_values <- sum(is.na(flight))
+if (missing_values > 0) {
+  cat("There are", missing_values, "missing values in the flight data.\n")
+} else {
+  cat("There are no missing values in the flight data.\n")
+}
+```
+
+```{r echo = FALSE}
+par(mfrow=c(1,2))
+ts.plot(flight, main="The Flight to Cancun of USA between 2006 and 2019")
+ts.plot(log(flight), main="The Log Flight to Cancun of USA between 2006 and 2019")
+summary(fit <- lm(log(flight)~ t))
+plot(log(flight), type="o", ylab="Log(flight)")
+abline(fit,col="red")
+```
+
+```{r echo = FALSE}
+t2 <- t * t
+fit1 <- lm(log(flight) ~ t+t2 )
+summary(fit1)
+yhat = fitted(fit)
+plot(log(flight), type="o", ylab="Log(flight)")
+lines(as.numeric(t),yhat, col = "blue") # add lines to the existing plot
+```
+
+```{r echo = FALSE}
+y = residuals(fit)
+plot(t,y, type="l", main="Trend Removed", ylab="Residuals")
+```
+
+```{r echo = FALSE}
+m_j1=tapply(log(flight)-yhat,floor(time(log(flight))),mean)
+m_j1=ts(rep(m_j1,each=12),start=2006,frequency = 12)
+ts.plot(log(flight)-yhat,m_j1,col=c("black","red"))
+ts.plot(log(flight)-yhat-m_j1,col="blue")
+```
+
+```{r echo = FALSE}
+s_k1=tapply(log(flight)-yhat-m_j1,cycle(log(flight)),mean)
+s_k1=ts(rep(s_k1,times=14),start=2006,frequency = 12)
+ts.plot(log(flight)-yhat-m_j1,s_k1,col=c("blue","red"),main="The Plot of Seasonality(red)")
+res1=log(flight)-yhat-s_k1
+ts.plot(res1,col="blue",main="The Plot of After Removed Seasonality Components")
+Box.test(res1, lag = 1, type = "Ljung-Box")
+qqnorm(res1)
+z = res1
+par(mfrow=c(1,2))
+acf(z,main="The ACF Plot of Residuals")
+pacf(z,main="The PACF Plot of Residuals")
+```
+
+```{r echo = FALSE}
+fit3 <- arima(z, order=c(1,0,1), include.mean=T, method='CSS-ML')
+summary(fit3)
+wn = resid(fit3)
+acf(wn, lag.max=10)
+pacf(wn, lag.max=10)
+Box.test(wn, lag = 2, type = "Ljung-Box")
+ts.plot(res1,wn,col=c("black","red"),main="The ARMA(1,1) Predict values(red) and The Deseason Residuals(black)")
+fc = forecast(wn, h=132, level = .95)
+plot(fc)
+fc
+fit4 = lm(y~.,data=flight)
+t_new = 169:300
+trend_fc = fit$coefficients[1]+fit$coefficients[2]*t_new
+trend_fc
+season_fc = fit4$fitted.values[1:10]+fc$mean  
+x_hat = season_fc+trend_fc
+x_hat
+flight = exp(x_hat)
+flight
+```
+
+```{r echo = FALSE}
+# Load necessary libraries
+library(stats)
+# Spectral Density Calculation
+spec_obj = spec.pgram(res1, spans = c(3,3), taper = 0.1, log = "no")
+abline(v=1/12)
+
+# Plotting Spectral Density
+plot(spec_obj, main="Spectral Density of Residuals")
+
+# Identify Peak Frequency
+peak_frequency = spec_obj$freq[which.max(spec_obj$spec)]
+
+# Add a vertical line to indicate the peak frequency
+abline(v=peak_frequency, lty=2, col="red")
+```
+
